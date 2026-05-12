@@ -16,15 +16,6 @@ Strong enough to **level up your code**.
 
 No fluff. No long articles. Just pure, practical Django — delivered daily like animation frames.
 
----
-
-## 🎨 The Concept
-Day 1 ⚡ → select_related vs prefetch_related
-Day 2 ⚡ → custom model managers
-Day 3 ⚡ → signals (and when to avoid them)
-Day 4 ⚡ → middleware magic
-...
-Day 365 🚀 → Django master
 
 
 ---
