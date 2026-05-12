@@ -1,12 +1,11 @@
 
-
 # 🐂 Django Daily Tip - Day 1
 
-## ⚡ موضوع: `select_related` در مقابل `prefetch_related`
+## ⚡ Topic: `select_related` vs `prefetch_related`
 
 ---
 
-## ❌ کد نادرست و قدیمی (بدون استفاده از select_related)
+## ❌ Bad/Old Code (Without select_related)
 
 ```python
 # views.py
@@ -20,8 +19,8 @@ def book_list(request):
     for book in books:
         context.append({
             'title': book.title,
-            'author_name': book.author.name,  # مشکل اینجاست
-            'publisher_name': book.author.publisher.name,  # مشکل عمیق‌تر
+            'author_name': book.author.name,  # Problem right here
+            'publisher_name': book.author.publisher.name,  # Deeper problem
         })
     
     return render(request, 'books.html', {'books': context})
@@ -43,44 +42,44 @@ class Book(models.Model):
 
 ---
 
-## 🐛 باگ‌ها و معایب کد قدیمی
+## 🐛 Bugs and Drawbacks of the Old Code
 
-| مشکل | توضیح |
-|------|------|
-| **مشکل N+1 Query** | برای ۱۰ کتاب، ابتدا ۱ کوئری برای گرفتن کتاب‌ها + ۱۰ کوئری برای گرفتن نویسنده هر کتاب = **۱۱ کوئری** |
-| **مشکل N+1 عمیق‌تر** | در خط `book.author.publisher.name`، برای هر کتاب یک کوئری دیگر هم به جدول Publisher می‌زنه → **۱ + (۱۰×۲) = ۲۱ کوئری** |
-| **کند شدن شدید** | با ۱۰۰۰ کتاب، حدود ۲۰۰۱ کوئری به دیتابیس زده می‌شه |
-| **عدم مقیاس‌پذیری** | با رشد دیتابیس، سرعت به شدت افت می‌کند |
-| **افزایش بار دیتابیس** | تعداد اتصالات و کوئری‌های پیدرپی، دیتابیس رو اذیت می‌کند |
+| Issue | Description |
+|-------|-------------|
+| **N+1 Query Problem** | For 10 books: 1 query to fetch books + 10 queries for each book's author = **11 queries** |
+| **Deeper N+1 Problem** | On `book.author.publisher.name` line, an additional query hits the Publisher table for each book → **1 + (10×2) = 21 queries** |
+| **Severe Slowdown** | With 1000 books, approximately 2001 queries hit the database |
+| **No Scalability** | Performance degrades drastically as the database grows |
+| **Increased Database Load** | Consecutive connections and queries overwhelm the database |
 
 ---
 
-## ✅ کد بهینه (با select_related)
+## ✅ Optimized Code (With select_related)
 
 ```python
-# views.py - نسخه بهینه
+# views.py - Optimized version
 from django.shortcuts import render
 from django.db.models import Prefetch
 from .models import Book
 
 def book_list(request):
-    # با یک کوئری، همه روابط خارجی رو یکجا load می‌کنه
+    # Loads all foreign key relationships with a SINGLE query
     books = Book.objects.select_related(
-        'author__publisher'  # این یعنی author و publisher اون author رو هم بگیر
+        'author__publisher'  # This means: also fetch author AND their publisher
     ).all()
     
     context = []
     for book in books:
         context.append({
             'title': book.title,
-            'author_name': book.author.name,           # بدون کوئری اضافه
-            'publisher_name': book.author.publisher.name,  # باز هم بدون کوئری اضافه
+            'author_name': book.author.name,           # No extra query
+            'publisher_name': book.author.publisher.name,  # Still no extra query
         })
     
     return render(request, 'books.html', {'books': context})
 ```
 
-### خروجی کوئری تولید شده (فقط ۱ کوئری):
+### Generated SQL (Just 1 Query):
 
 ```sql
 SELECT 
@@ -99,21 +98,21 @@ INNER JOIN publisher ON author.publisher_id = publisher.id
 
 ---
 
-## 📊 مقایسه عملکرد
+## 📊 Performance Comparison
 
-| تعداد رکوردها | کد قدیمی (تعداد کوئری) | کد جدید (تعداد کوئری) |
-|--------------|------------------------|----------------------|
-| ۱۰ کتاب | ۲۱ کوئری | **۱ کوئری** |
-| ۱۰۰ کتاب | ۲۰۱ کوئری | **۱ کوئری** |
-| ۱۰۰۰ کتاب | ۲۰۰۱ کوئری | **۱ کوئری** |
+| Number of Records | Old Code (Query Count) | New Code (Query Count) |
+|-------------------|------------------------|------------------------|
+| 10 books | 21 queries | **1 query** |
+| 100 books | 201 queries | **1 query** |
+| 1000 books | 2001 queries | **1 query** |
 
-> 🚀 **کاهش ۲۰۰۰ برابر تعداد کوئری‌ها برای ۱۰۰۰ کتاب!**
+> 🚀 **2000x reduction in queries for 1000 books!**
 
 ---
 
-## 🔥 مثال موقعیتی که خیلی استفاده می‌شه
+## 🔥 Real-World Example You'll Use a Lot
 
-### سناریو: صفحه پنل مدیریت سفارشات فروشگاه
+### Scenario: Store Order Admin Panel
 
 ```python
 # models.py
@@ -131,23 +130,23 @@ class Order(models.Model):
     quantity = models.IntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
 
-# views.py - فرمت قدیمی (بد)
+# views.py - Old format (BAD)
 def old_order_list(request):
-    orders = Order.objects.all()  # فقط Order
+    orders = Order.objects.all()  # Just Order
     result = []
     for order in orders:
         result.append({
             'customer': order.customer.name,   # +1 query
             'product': order.product.title,     # +1 query
-            'total': order.product.price * order.quantity,  # بازهم product
+            'total': order.product.price * order.quantity,  # product again
         })
-    # برای 500 سفارش = 1 + (500*2) = 1001 کوئری
+    # For 500 orders = 1 + (500*2) = 1001 queries
     return render(request, 'orders.html', {'orders': result})
 
-# views.py - فرمت جدید (نایس)
+# views.py - New format (NICE)
 def new_order_list(request):
     orders = Order.objects.select_related('customer', 'product').all()
-    # فقط 1 کوئری کل عملیات 🎯
+    # Just 1 query for the entire operation 🎯
     
     result = []
     for order in orders:
@@ -161,24 +160,24 @@ def new_order_list(request):
 
 ---
 
-## 📌 نکته طلایی روز
+## 📌 Golden Tip of the Day
 
-> **`select_related`** برای رابطه `ForeignKey` و `OneToOneField` استفاده می‌شه و با `JOIN` داخل **یک کوئری** همه رو میاره.
+> **`select_related`** is used for `ForeignKey` and `OneToOneField` relationships and fetches everything with a SQL `JOIN` in **a single query**.
 
-> **`prefetch_related`** برای رابطه `ManyToManyField` و `reverse ForeignKey` استفاده می‌شه و با **دو کوئری** (و بعد join در پایتون) کار می‌کنه.
+> **`prefetch_related`** is used for `ManyToManyField` and `reverse ForeignKey` relationships and works with **two queries** (then joins in Python).
 
-**قاعده سرانگشتی:**
-- پیش‌بینی می‌کنی به رابطه‌های خارجی نیاز داری؟ → حتماً `select_related` یا `prefetch_related` بزن.
-- از `len(queryset)` برای چک کردن تعداد استفاده نکن (اون کوئری رو execute می‌کنه). از `.count()` استفاده کن.
+**Rule of Thumb:**
+- Expecting to need related objects? → Always use `select_related` or `prefetch_related`.
+- Don't use `len(queryset)` to check count (it executes the query). Use `.count()` instead.
 
 ---
 
-## 🧪 تمرین روز
+## 🧪 Daily Exercise
 
-کد زیر رو بهینه کن (با فرض مدل‌های `Post` و `User` و `Profile`):
+Optimize the following code (assuming `Post`, `User`, and `Profile` models):
 
 ```python
-# قبل
+# Before
 posts = Post.objects.filter(is_published=True)
 for post in posts:
     print(post.user.profile.bio)
@@ -186,20 +185,16 @@ for post in posts:
 ```
 
 <details>
-<summary>📖 جواب (قبل از نگاه کردن فکر کن)</summary>
+<summary>📖 Answer (Think before looking)</summary>
 
 ```python
 posts = Post.objects.filter(is_published=True).select_related('user__profile')
 for post in posts:
-    print(post.user.profile.bio)   # دیگه کوئری اضافه نداره
+    print(post.user.profile.bio)   # No more extra queries
     print(post.user.email)
 ```
 </details>
 
 ---
 
-**یادت باشه:** هر حرف‌نقطه‌دار (`book.author.publisher`) می‌تونه یه کوئری مخفی باشه. `select_related` شمشیر جادویی‌اته براش.
-
----
-
-بعد از خوندن این تیپ، کدت از نظر تعداد کوئری‌ها چند برابر سریع‌تر شد؟ 😎
+**Remember:** Every dot-chained access (`book.author.publisher`) can be a hidden query. `select_related` is your magic sword for this.
